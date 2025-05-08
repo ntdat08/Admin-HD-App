@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "816078782135",
+    "project_id": "hdnow-app",
+    "storage_bucket": "hdnow-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:816078782135:android:fe08e69d4400d0bce29732",
+        "android_client_info": {
+          "package_name": "com.example.adminhdapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBX0pvHk__XWYgkpr6dt1dnmU_wY0gLKAQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
