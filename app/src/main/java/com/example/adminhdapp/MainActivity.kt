@@ -1,5 +1,6 @@
 package com.example.adminhdapp
 
+import CloudinaryHelper
 import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -22,6 +23,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        CloudinaryHelper.initialize(this)
         auth = FirebaseAuth.getInstance()
         binding.logOut.setOnClickListener {
             auth.signOut()
