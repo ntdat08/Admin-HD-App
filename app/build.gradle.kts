@@ -50,6 +50,7 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
+    implementation(libs.firebase.firestore.ktx)
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
@@ -65,4 +66,7 @@ dependencies {
     implementation("com.google.firebase:firebase-storage")
 
     implementation ("com.github.bumptech.glide:glide:4.16.0")
+
+    // Cloudinary
+    implementation("com.squareup.okhttp3:okhttp:4.9.3")
 }

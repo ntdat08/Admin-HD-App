@@ -1,37 +1,35 @@
 package com.example.adminhdapp
 
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.ImageDecoder
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
-import android.util.Base64
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import com.example.adminhdapp.databinding.ActivityAddItemBinding
 import com.example.adminhdapp.model.AllMenu
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
-
-import java.io.ByteArrayOutputStream
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 
 class AddItemActivity : AppCompatActivity() {
 
-    // Food item details
     private lateinit var foodName: String
     private lateinit var foodPrice: String
     private lateinit var foodDescription: String
-    private var foodImageUri: Uri? = null
     private lateinit var foodIngredient: String
+    private var foodImageUri: Uri? = null
 
-    private lateinit var autn: FirebaseAuth
-    private lateinit var database: FirebaseDatabase
-
+    private lateinit var auth: FirebaseAuth
     private lateinit var binding: ActivityAddItemBinding
+
+    private val client = OkHttpClient()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,12 +38,13 @@ class AddItemActivity : AppCompatActivity() {
 
         binding.image.visibility = View.GONE
 
-        // Initialize Firebase
-        autn = FirebaseAuth.getInstance()
-        database = FirebaseDatabase.getInstance()
+        auth = FirebaseAuth.getInstance()
+
+        binding.addImage.setOnClickListener {
+            pickImage.launch("image/*")
+        }
 
         binding.addItemBtn.setOnClickListener {
-            // Get all text from edittext
             foodName = binding.enterFoodName.text.toString().trim()
             foodPrice = binding.enterFoodPrice.text.toString().trim()
             foodDescription = binding.description.text.toString().trim()
@@ -53,15 +52,11 @@ class AddItemActivity : AppCompatActivity() {
 
             if (foodName.isBlank() || foodPrice.isBlank() || foodDescription.isBlank() || foodIngredient.isBlank()) {
                 Toast.makeText(this, "Please fill all details", Toast.LENGTH_SHORT).show()
+            } else if (foodImageUri == null) {
+                Toast.makeText(this, "Please choose an image", Toast.LENGTH_SHORT).show()
             } else {
-                dataUpload()
-                startActivity(Intent(this, MainActivity::class.java))
-                finish()
+                uploadToCloudinary(foodImageUri!!)
             }
-        }
-
-        binding.addImage.setOnClickListener {
-            picImage.launch("image/*")
         }
 
         binding.backBtn.setOnClickListener {
@@ -69,66 +64,77 @@ class AddItemActivity : AppCompatActivity() {
         }
     }
 
-    private fun dataUpload() {
-        val menuRef = database.getReference("Menu")
-        val newItemKey = menuRef.push().key
+    private fun uploadToCloudinary(imageUri: Uri) {
+        val file = uriToFile(imageUri)
+        val requestBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("file", file.name, RequestBody.create("image/*".toMediaTypeOrNull(), file))
+            .addFormDataPart("upload_preset", "hdapp_upload_image")
+            .build()
 
-        if (foodImageUri != null) {
-            val imageBase64 = uriToBase64(foodImageUri!!)
-            if (imageBase64 == null) {
-                Toast.makeText(this, "Image conversion failed", Toast.LENGTH_SHORT).show()
-                return
+        val request = Request.Builder()
+            .url("https://api.cloudinary.com/v1_1/dt8rs7d8v/image/upload")
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread {
+                    Toast.makeText(this@AddItemActivity, "Image upload failed", Toast.LENGTH_SHORT).show()
+                }
             }
 
-            val menuItem = AllMenu(
-                newItemKey,
-                foodName = foodName,
-                foodPrice = foodPrice,
-                foodDescription = foodDescription,
-                foodIngredient = foodIngredient,
-                foodImage = imageBase64
-            )
+            override fun onResponse(call: Call, response: Response) {
+                val responseBody = response.body?.string()
+                val json = JSONObject(responseBody ?: "")
+                val imageUrl = json.getString("secure_url")
 
-            newItemKey?.let { key ->
-                menuRef.child(key).setValue(menuItem)
-                    .addOnSuccessListener {
-                        Toast.makeText(this, "Item added successfully", Toast.LENGTH_SHORT).show()
-                    }
-                    .addOnFailureListener {
-                        Toast.makeText(this, "Failed to add item", Toast.LENGTH_SHORT).show()
-                    }
+                runOnUiThread {
+                    uploadDataToRealtimeDatabase(imageUrl)
+                }
             }
-        } else {
-            Toast.makeText(this, "Please choose an image", Toast.LENGTH_SHORT).show()
-        }
+        })
     }
 
-    // Convert image URI to Base64 string
-    private fun uriToBase64(uri: Uri): String? {
-        return try {
-            val bitmap: Bitmap = if (Build.VERSION.SDK_INT < 28) {
-                MediaStore.Images.Media.getBitmap(contentResolver, uri)
-            } else {
-                val source = ImageDecoder.createSource(contentResolver, uri)
-                ImageDecoder.decodeBitmap(source)
-            }
+    private fun uploadDataToRealtimeDatabase(imageUrl: String) {
+        val dbRef = FirebaseDatabase.getInstance().getReference("AllMenu")
+        val itemKey = dbRef.push().key!!
 
-            val outputStream = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-            val imageBytes = outputStream.toByteArray()
-            Base64.encodeToString(imageBytes, Base64.DEFAULT)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+        val newItem = AllMenu(
+            key = itemKey,
+            foodName = foodName,
+            foodPrice = foodPrice,
+            foodDescription = foodDescription,
+            foodIngredient = foodIngredient,
+            foodImage = imageUrl
+        )
+
+        dbRef.child(itemKey).setValue(newItem)
+            .addOnSuccessListener {
+                Toast.makeText(this, "Item added successfully", Toast.LENGTH_SHORT).show()
+                startActivity(Intent(this, MainActivity::class.java))
+                finish()
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "Failed to add item", Toast.LENGTH_SHORT).show()
+            }
     }
 
-    // Pick image from gallery
-    private val picImage = registerForActivityResult(ActivityResultContracts.GetContent()) {
+    private fun uriToFile(uri: Uri): File {
+        val inputStream = contentResolver.openInputStream(uri)
+        val tempFile = File.createTempFile("upload", ".jpg", cacheDir)
+        val outputStream = FileOutputStream(tempFile)
+        inputStream?.copyTo(outputStream)
+        inputStream?.close()
+        outputStream.close()
+        return tempFile
+    }
+
+    private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) {
         if (it != null) {
-            binding.image.visibility = View.VISIBLE
-            binding.image.setImageURI(it)
             foodImageUri = it
+            binding.image.setImageURI(it)
+            binding.image.visibility = View.VISIBLE
         }
     }
 }
